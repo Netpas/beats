@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"fmt"
+	//"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -43,39 +44,70 @@ func create(
 	if tls != nil {
 		defaultScheme = "ssl"
 	}
-	addrs, err := collectHosts(&config, defaultScheme)
+
+	localAddrs, count, err := monitors.CollectLocalAddr(config.Interface, defaultScheme)
 	if err != nil {
 		return nil, err
+	} else {
+		if count != 0 {
+			debugf("http bind interface parse: {")
+			for _, localAddr := range localAddrs {
+				for _, localIP := range localAddr.IPs {
+					debugf("IP: %s, port: %d", localIP.IP.String(), localIP.Port)
+				}
+			}
+			debugf("Number of destination addresses: %d", count)
+			debugf("}")
+		}
 	}
 
 	if config.Socks5.URL != "" && !config.Socks5.LocalResolve {
 		var jobs []monitors.Job
-		for _, addr := range addrs {
-			scheme, host := addr.Scheme, addr.Host
-			for _, port := range addr.Ports {
-				job, err := newTCPMonitorHostJob(scheme, host, port, tls, &config)
-				if err != nil {
-					return nil, err
+		for _, localAddr := range localAddrs {
+			addrs, err := collectHosts(&config, defaultScheme, localAddr.Key)
+			if err != nil {
+				return nil, err
+			}
+			for _, addr := range addrs {
+				scheme, host := addr.Scheme, addr.Host
+				for _, port := range addr.Ports {
+					job, err := newTCPMonitorHostJob(scheme, host, port,
+						localAddr, tls, &config)
+					if err != nil {
+						return nil, err
+					}
+					jobs = append(jobs, job)
 				}
-				jobs = append(jobs, job)
 			}
 		}
 		return jobs, nil
 	}
 
-	jobs := make([]monitors.Job, len(addrs))
-	for i, addr := range addrs {
-		jobs[i], err = newTCPMonitorIPsJob(addr, tls, &config)
+	jobs := make([]monitors.Job, count)
+	i := 0
+	for _, localAddr := range localAddrs {
+		addrs, err := collectHosts(&config, defaultScheme, localAddr.Key)
 		if err != nil {
 			return nil, err
 		}
+		for _, addr := range addrs {
+			jobs[i], err = newTCPMonitorIPsJob(addr, localAddr, tls, &config)
+			if err != nil {
+				return nil, err
+			}
+			i++
+		}
 	}
+
 	return jobs, nil
 }
 
-func collectHosts(config *Config, defaultScheme string) ([]connURL, error) {
+func collectHosts(config *Config, defaultScheme string, key string) ([]connURL, error) {
 	var addrs []connURL
-	for _, h := range config.Hosts {
+	var hosts []string
+
+	hosts = config.Interface[key]
+	for _, h := range hosts {
 		scheme := defaultScheme
 		host := ""
 		u, err := url.Parse(h)

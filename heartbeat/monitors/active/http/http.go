@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"net"
 	"net/http"
 	"net/url"
 
@@ -35,7 +36,6 @@ func create(
 
 	var body []byte
 	var enc contentEncoder
-
 	if config.Check.Request.SendBody != "" {
 		var err error
 		compression := config.Check.Request.Compression
@@ -53,27 +53,51 @@ func create(
 		body = buf.Bytes()
 	}
 
+	localAddrs, count, err := monitors.CollectLocalAddr(config.Interface, "http")
+	if err != nil {
+		return nil, err
+	} else {
+		if count != 0 {
+			debugf("http bind interface parse: {")
+			for _, localAddr := range localAddrs {
+				for _, localIP := range localAddr.IPs {
+					debugf("IP: %s, port: %d", localIP.IP.String(), localIP.Port)
+				}
+			}
+			debugf("Number of destination addresses: %d", count)
+			debugf("}")
+		}
+	}
+
 	validator := makeValidateResponse(&config.Check.Response)
 
-	jobs := make([]monitors.Job, len(config.URLs))
+	jobs := make([]monitors.Job, count)
+	i := 0
 
 	if config.ProxyURL != "" {
-		transport, err := newRoundTripper(&config, tls)
-		if err != nil {
-			return nil, err
-		}
-
-		for i, url := range config.URLs {
-			jobs[i], err = newHTTPMonitorHostJob(url, &config, transport, enc, body, validator)
+		for _, localAddr := range localAddrs {
+			transport, err := newRoundTripper(&config, tls, localAddr)
 			if err != nil {
 				return nil, err
 			}
+			urls := config.Interface[localAddr.Key]
+			for _, url := range urls {
+				jobs[i], err = newHTTPMonitorHostJob(url, &config, transport, enc, body, validator, localAddr.Host)
+				if err != nil {
+					return nil, err
+				}
+				i++
+			}
 		}
 	} else {
-		for i, url := range config.URLs {
-			jobs[i], err = newHTTPMonitorIPsJob(&config, url, tls, enc, body, validator)
-			if err != nil {
-				return nil, err
+		for _, localAddr := range localAddrs {
+			urls := config.Interface[localAddr.Key]
+			for _, url := range urls {
+				jobs[i], err = newHTTPMonitorIPsJob(&config, url, tls, enc, body, validator, localAddr)
+				if err != nil {
+					return nil, err
+				}
+				i++
 			}
 		}
 	}
@@ -81,7 +105,10 @@ func create(
 	return jobs, nil
 }
 
-func newRoundTripper(config *Config, tls *transport.TLSConfig) (*http.Transport, error) {
+func newRoundTripper(config *Config,
+	tls *transport.TLSConfig,
+	localAddr monitors.BindLocalAddr,
+) (*http.Transport, error) {
 	var proxy func(*http.Request) (*url.URL, error)
 	if config.ProxyURL != "" {
 		url, err := url.Parse(config.ProxyURL)
@@ -90,8 +117,22 @@ func newRoundTripper(config *Config, tls *transport.TLSConfig) (*http.Transport,
 		}
 		proxy = http.ProxyURL(url)
 	}
+	var dialer transport.Dialer
+	var localIPs []net.TCPAddr
 
-	dialer := transport.NetDialer(config.Timeout)
+	for _, localIP := range localAddr.IPs {
+		localIPs = append(localIPs, net.TCPAddr{
+			IP:   localIP.IP,
+			Port: localIP.Port,
+			Zone: localIP.Zone,
+		})
+	}
+
+	if len(localAddr.IPs) <= 0 {
+		dialer = transport.NetDialer(config.Timeout)
+	} else {
+		dialer = transport.NetBindDialer(config.Timeout, localIPs)
+	}
 	tlsDialer, err := transport.TLSDialer(dialer, tls, config.Timeout)
 	if err != nil {
 		return nil, err

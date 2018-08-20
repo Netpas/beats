@@ -9,8 +9,8 @@ import (
 type Config struct {
 	Name string `config:"name"`
 
-	Hosts []string            `config:"hosts" validate:"required"`
-	Mode  monitors.IPSettings `config:",inline"`
+	Mode      monitors.IPSettings `config:",inline"`
+	Interface map[string][]string `config:"interface" validate:"required"`
 
 	Timeout time.Duration `config:"timeout"`
 	Wait    time.Duration `config:"wait"`

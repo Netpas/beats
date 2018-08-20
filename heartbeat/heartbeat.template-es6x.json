@@ -73,6 +73,10 @@
             }
           }
         },
+        "interface": {
+          "norms": false,
+          "type": "text"
+        },
         "ip": {
           "ignore_above": 1024,
           "type": "keyword"

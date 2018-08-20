@@ -13,10 +13,11 @@ import (
 type Config struct {
 	Name string `config:"name"`
 
-	URLs         []string      `config:"urls" validate:"required"`
 	ProxyURL     string        `config:"proxy_url"`
 	Timeout      time.Duration `config:"timeout"`
 	MaxRedirects int           `config:"max_redirects"`
+
+	Interface map[string][]string `config:"interface" validate:"required"`
 
 	Mode monitors.IPSettings `config:",inline"`
 

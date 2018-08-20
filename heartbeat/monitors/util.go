@@ -154,7 +154,7 @@ func MakePingAllIPPortFactory(
 }
 
 func MakeByIPJob(
-	name, typ string,
+	localHost, name, typ string,
 	ip net.IP,
 	pingFactory func(ip *net.IPAddr) TaskRunner,
 ) (Job, error) {
@@ -165,12 +165,12 @@ func MakeByIPJob(
 		return nil, err
 	}
 
-	fields := common.MapStr{"ip": addr.String()}
+	fields := common.MapStr{"ip": addr.String(), "interface": localHost}
 	return MakeJob(name, typ, WithFields(fields, pingFactory(addr)).Run), nil
 }
 
 func MakeByHostJob(
-	name, typ string,
+	localHost, name, typ string,
 	host string,
 	settings IPSettings,
 	pingFactory func(ip *net.IPAddr) TaskRunner,
@@ -183,7 +183,7 @@ func MakeByHostJob(
 	mode := settings.Mode
 	if mode == PingAny {
 		return MakeJob(name, typ, func() (common.MapStr, []TaskRunner, error) {
-			event := common.MapStr{"host": host}
+			event := common.MapStr{"host": host, "interface": localHost}
 
 			dnsStart := time.Now()
 			ip, err := net.ResolveIPAddr(network, host)
@@ -202,7 +202,7 @@ func MakeByHostJob(
 
 	filter := makeIPFilter(network)
 	return MakeJob(name, typ, func() (common.MapStr, []TaskRunner, error) {
-		event := common.MapStr{"host": host}
+		event := common.MapStr{"host": host, "interface": localHost}
 
 		// TODO: check for better DNS IP lookup support:
 		//         - The net.LookupIP drops ipv6 zone index

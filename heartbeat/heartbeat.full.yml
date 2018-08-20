@@ -23,8 +23,23 @@ heartbeat.monitors:
   # Configure task schedule using cron-like syntax
   schedule: '*/5 * * * * * *' # exactly every 5 seconds like 10:00:00, 10:00:05, ...
 
-  # List of hosts to ping
-  hosts: ["localhost"]
+  # key: Bind local address
+  # default: Not bind, the system selects the address.
+  # *network: Bind network card
+  # ip : Bind ipv4 address
+  # [ip6] : Bind ipv6 address
+  #
+  # value: List of hosts to ping
+  #
+  # example 1:
+  # "default":["localhost"]
+  #
+  # example 2: Bind multiple addresses
+  # "*ens33":["localhost"]
+  # "172-20-35-115":["localhost"]
+  # "[2001:db8:0:f101::5]":["localhost6"]
+  interface:
+    "default": ["http://localhost:9200"]
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.
@@ -74,7 +89,26 @@ heartbeat.monitors:
   #     Using `tls`/`ssl`, an SSL connection is established. If no ssl is configured,
   #     system defaults will be used (not supported on windows).
   #     If `port` is missing in url, the ports setting is required.
-  hosts: ["localhost:9200"]
+  #
+  # key: Bind local address
+  # default: Not bind, the system selects the address.
+  # *network: Bind network card
+  # ip:port : Bind ipv4 address
+  # [ip]:port : Bind ipv6 address
+  #
+  # value: List or urls to query
+  #
+  # example 1:
+  # "default":["localhost:9200"]
+  #
+  # example 2: Bind multiple addresses
+  # "*ens33":["localhost:9200"]
+  # "172-20-35-115":["localhost:9200"]
+  # "192-168-0-115:7890":["localhost:9200"]
+  # "[2001:db8:0:f101::5]":["localhost6:9200"]
+  # "[2001:db8:0:f101::a]:7786":["localhost6:9200"]
+  interface:
+    "default": ["http://localhost:9200"]
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.
@@ -131,7 +165,25 @@ heartbeat.monitors:
   schedule: '@every 5s' # every 5 seconds from start of beat
 
   # Configure URLs to ping
-  urls: ["http://localhost:9200"]
+  # key: Bind local address
+  # default: Not bind, the system selects the address.
+  # *network: Bind network card
+  # ip:port : Bind ipv4 address
+  # [ip]:port : Bind ipv6 address
+  #
+  # value: List or urls to query
+  #
+  # example 1:
+  # "default":["http://localhost:9200"]
+  #
+  # example 2: Bind multiple addresses
+  # "*ens33":["http://localhost:9200"]
+  # "172-20-35-115":["http://localhost:9200"]
+  # "192-168-0-115:7890":["http://localhost:9200"]
+  # "[2001:db8:0:f101::5]":["http://localhost6:9200"]
+  # "[2001:db8:0:f101::a]:7786":["http://localhost6:9200"]
+  interface:
+    "default": ["http://localhost:9200"]
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.

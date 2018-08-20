@@ -14,8 +14,8 @@ type Config struct {
 	Name string `config:"name"`
 
 	// check all ports if host does not contain port
-	Hosts []string `config:"hosts" validate:"required"`
-	Ports []uint16 `config:"ports"`
+	Ports     []uint16            `config:"ports"`
+	Interface map[string][]string `config:"interface" validate:"required"`
 
 	Mode monitors.IPSettings `config:",inline"`
 
