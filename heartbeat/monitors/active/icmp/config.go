@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/heartbeat/monitors"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 )
 
 type Config struct {
@@ -14,6 +15,9 @@ type Config struct {
 
 	Timeout time.Duration `config:"timeout"`
 	Wait    time.Duration `config:"wait"`
+
+	// dns
+	Dns transport.Dns `config:"dns"`
 }
 
 var DefaultConfig = Config{
@@ -22,4 +26,5 @@ var DefaultConfig = Config{
 
 	Timeout: 16 * time.Second,
 	Wait:    1 * time.Second,
+	Dns:     transport.DefaultDnsSet,
 }

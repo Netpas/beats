@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 
 	"github.com/elastic/beats/heartbeat/look"
 )
@@ -174,6 +175,7 @@ func MakeByHostJob(
 	host string,
 	settings IPSettings,
 	pingFactory func(ip *net.IPAddr) TaskRunner,
+	dns transport.Dns,
 ) (Job, error) {
 	network := settings.Network()
 	if network == "" {
@@ -186,9 +188,18 @@ func MakeByHostJob(
 			event := common.MapStr{"host": host, "interface": localHost}
 
 			dnsStart := time.Now()
-			ip, err := net.ResolveIPAddr(network, host)
-			if err != nil {
-				return event, nil, err
+			var ip *net.IPAddr
+			var err error
+			if dns.Addrs == nil {
+				ip, err = net.ResolveIPAddr(network, host)
+				if err != nil {
+					return event, nil, err
+				}
+			} else {
+				ip, err = transport.DnsLookupAny(host, dns)
+				if err != nil {
+					return event, nil, err
+				}
 			}
 
 			dnsEnd := time.Now()
@@ -208,9 +219,18 @@ func MakeByHostJob(
 		//         - The net.LookupIP drops ipv6 zone index
 		//
 		dnsStart := time.Now()
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return event, nil, err
+		var ips []net.IP
+		var err error
+		if dns.Addrs == nil {
+			ips, err = net.LookupIP(host)
+			if err != nil {
+				return event, nil, err
+			}
+		} else {
+			ips, err = transport.DnsLookup(host, dns)
+			if err != nil {
+				return event, nil, err
+			}
 		}
 
 		dnsEnd := time.Now()

@@ -29,12 +29,16 @@ type Config struct {
 	// validate connection
 	SendString    string `config:"check.send"`
 	ReceiveString string `config:"check.receive"`
+
+	// dns
+	Dns transport.Dns `config:"dns"`
 }
 
 var DefaultConfig = Config{
 	Name:    "tcp",
 	Timeout: 16 * time.Second,
 	Mode:    monitors.DefaultIPSettings,
+	Dns:     transport.DefaultDnsSet,
 }
 
 func (c *Config) Validate() error {
