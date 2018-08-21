@@ -33,7 +33,9 @@ func NetDialer(timeout time.Duration) Dialer {
 	})
 }
 
-func NetBindDialer(timeout time.Duration, locals []net.TCPAddr) Dialer {
+func NetBindDialer(timeout time.Duration,
+	locals []net.TCPAddr,
+	dnsParse Dns) Dialer {
 	return DialerFunc(func(network, address string) (net.Conn, error) {
 		switch network {
 		case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6":
@@ -45,11 +47,17 @@ func NetBindDialer(timeout time.Duration, locals []net.TCPAddr) Dialer {
 		if err != nil {
 			return nil, err
 		}
+		var addresses []string
+		var errDns error
 
-		addresses, err := net.LookupHost(host)
-		if err != nil {
+		if dnsParse.Addrs == nil {
+			addresses, errDns = net.LookupHost(host)
+		} else {
+			addresses, errDns = dnsIPtoString(host, dnsParse)
+		}
+		if errDns != nil {
 			logp.Warn(`DNS lookup failure "%s": %v`, host, err)
-			return nil, err
+			return nil, errDns
 		}
 		var addrV4, addrV6 []string
 		for _, address := range addresses {
