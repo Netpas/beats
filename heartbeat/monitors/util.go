@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 
 	"github.com/elastic/beats/heartbeat/look"
 )
@@ -154,7 +155,7 @@ func MakePingAllIPPortFactory(
 }
 
 func MakeByIPJob(
-	name, typ string,
+	localHost, name, typ string,
 	ip net.IP,
 	pingFactory func(ip *net.IPAddr) TaskRunner,
 ) (Job, error) {
@@ -165,15 +166,16 @@ func MakeByIPJob(
 		return nil, err
 	}
 
-	fields := common.MapStr{"ip": addr.String()}
+	fields := common.MapStr{"ip": addr.String(), "interface": localHost}
 	return MakeJob(name, typ, WithFields(fields, pingFactory(addr)).Run), nil
 }
 
 func MakeByHostJob(
-	name, typ string,
+	localHost, name, typ string,
 	host string,
 	settings IPSettings,
 	pingFactory func(ip *net.IPAddr) TaskRunner,
+	dns transport.Dns,
 ) (Job, error) {
 	network := settings.Network()
 	if network == "" {
@@ -183,12 +185,21 @@ func MakeByHostJob(
 	mode := settings.Mode
 	if mode == PingAny {
 		return MakeJob(name, typ, func() (common.MapStr, []TaskRunner, error) {
-			event := common.MapStr{"host": host}
+			event := common.MapStr{"host": host, "interface": localHost}
 
 			dnsStart := time.Now()
-			ip, err := net.ResolveIPAddr(network, host)
-			if err != nil {
-				return event, nil, err
+			var ip *net.IPAddr
+			var err error
+			if dns.Addrs == nil {
+				ip, err = net.ResolveIPAddr(network, host)
+				if err != nil {
+					return event, nil, err
+				}
+			} else {
+				ip, err = transport.DnsLookupAny(host, dns)
+				if err != nil {
+					return event, nil, err
+				}
 			}
 
 			dnsEnd := time.Now()
@@ -202,15 +213,24 @@ func MakeByHostJob(
 
 	filter := makeIPFilter(network)
 	return MakeJob(name, typ, func() (common.MapStr, []TaskRunner, error) {
-		event := common.MapStr{"host": host}
+		event := common.MapStr{"host": host, "interface": localHost}
 
 		// TODO: check for better DNS IP lookup support:
 		//         - The net.LookupIP drops ipv6 zone index
 		//
 		dnsStart := time.Now()
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return event, nil, err
+		var ips []net.IP
+		var err error
+		if dns.Addrs == nil {
+			ips, err = net.LookupIP(host)
+			if err != nil {
+				return event, nil, err
+			}
+		} else {
+			ips, err = transport.DnsLookup(host, dns)
+			if err != nil {
+				return event, nil, err
+			}
 		}
 
 		dnsEnd := time.Now()

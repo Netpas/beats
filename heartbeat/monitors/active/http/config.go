@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/outputs"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 
 	"github.com/elastic/beats/heartbeat/monitors"
 )
@@ -13,10 +14,11 @@ import (
 type Config struct {
 	Name string `config:"name"`
 
-	URLs         []string      `config:"urls" validate:"required"`
 	ProxyURL     string        `config:"proxy_url"`
 	Timeout      time.Duration `config:"timeout"`
 	MaxRedirects int           `config:"max_redirects"`
+
+	Interface map[string][]string `config:"interface" validate:"required"`
 
 	Mode monitors.IPSettings `config:",inline"`
 
@@ -29,6 +31,9 @@ type Config struct {
 
 	// http(s) ping validation
 	Check checkConfig `config:"check"`
+
+	// dns
+	Dns transport.Dns `config:"dns"`
 }
 
 type checkConfig struct {
@@ -77,6 +82,7 @@ var defaultConfig = Config{
 			RecvBody:    "",
 		},
 	},
+	Dns: transport.DefaultDnsSet,
 }
 
 func (r *requestParameters) Validate() error {

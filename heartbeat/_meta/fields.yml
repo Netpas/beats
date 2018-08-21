@@ -34,6 +34,11 @@
       description: >
         Service url used by monitor.
 
+    - name: interface
+      type: text
+      description: >
+        Locally bind address.
+
     - name: ip
       type: keyword
       description: >

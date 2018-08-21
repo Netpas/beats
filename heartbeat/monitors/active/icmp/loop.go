@@ -15,6 +15,8 @@ import (
 	"golang.org/x/net/ipv6"
 
 	"github.com/elastic/beats/libbeat/logp"
+
+	"github.com/elastic/beats/heartbeat/monitors"
 )
 
 type icmpLoop struct {
@@ -65,36 +67,57 @@ type requestResult struct {
 
 var (
 	loopInit sync.Once
-	loop     *icmpLoop
+	loops    map[string]*icmpLoop
 )
 
-func newICMPLoop() (*icmpLoop, error) {
+func newICMPLoop(bindLocalAddrs []monitors.BindLocalAddr) (map[string]*icmpLoop, error) {
 	// Log errors at info level, as the loop is setup globally when ICMP module is loaded
 	// first (not yet configured).
 	// With multiple configurations using the icmp loop, we have to postpose
 	// IPv4/IPv6 checking
-	conn4 := createListener("IPv4", "ip4:icmp")
-	conn6 := createListener("IPv6", "ip6:ipv6-icmp")
 
-	l := &icmpLoop{
-		conn4:    conn4,
-		conn6:    conn6,
-		recv:     make(chan packet, 16),
-		requests: map[requestID]*requestContext{},
+	newLoops := make(map[string]*icmpLoop, 10)
+	var conn4 *icmp.PacketConn
+	var conn6 *icmp.PacketConn
+
+	for _, localAddr := range bindLocalAddrs {
+		conn4 = nil
+		conn6 = nil
+		if localAddr.Key == monitors.DefaultInterfaceMode {
+			conn4 = createListener("IPv4", "ip4:icmp", "")
+			conn6 = createListener("IPv6", "ip6:ipv6-icmp", "")
+		}
+		for _, ip := range localAddr.IPs {
+			if ip.IPtype == monitors.IPV4 && conn4 == nil {
+				conn4 = createListener("IPv4", "ip4:icmp", ip.IP.String())
+			}
+			if ip.IPtype == monitors.IPV6 && conn6 == nil {
+				conn6 = createListener("IPv6", "ip6:ipv6-icmp", ip.IP.String()+"%"+ip.Zone)
+			}
+		}
+
+		l := &icmpLoop{
+			conn4:    conn4,
+			conn6:    conn6,
+			recv:     make(chan packet, 16),
+			requests: map[requestID]*requestContext{},
+		}
+		newLoops[localAddr.Key] = l
+
+		if conn4 != nil {
+			go l.runICMPRecv(conn4, protocolICMP)
+		}
+		if conn6 != nil {
+			go l.runICMPRecv(conn6, protocolIPv6ICMP)
+		}
 	}
 
-	if conn4 != nil {
-		go l.runICMPRecv(conn4, protocolICMP)
-	}
-	if conn6 != nil {
-		go l.runICMPRecv(conn6, protocolIPv6ICMP)
-	}
-
-	return l, nil
+	return newLoops, nil
 }
 
-func (l *icmpLoop) checkNetworkMode(mode string) error {
+func (l *icmpLoop) checkNetworkMode(mode string) (string, error) {
 	ip4, ip6 := false, false
+	networkMode := ""
 	switch mode {
 	case "ip4":
 		ip4 = true
@@ -103,17 +126,26 @@ func (l *icmpLoop) checkNetworkMode(mode string) error {
 	case "ip":
 		ip4, ip6 = true, true
 	default:
-		return fmt.Errorf("'%v' is not supported", mode)
+		return "", fmt.Errorf("'%v' is not supported", mode)
+	}
+	if l.conn4 != nil && l.conn6 != nil {
+		networkMode = "ip"
+	} else if l.conn4 != nil {
+		networkMode = "ip4"
+	} else if l.conn6 != nil {
+		networkMode = "ip6"
 	}
 
-	if ip4 && l.conn4 == nil {
-		return errors.New("failed to initiate IPv4 support")
-	}
-	if ip6 && l.conn6 == nil {
-		return errors.New("failed to initiate IPv6 support")
+	if networkMode == "" {
+		if ip4 && l.conn4 == nil {
+			return "", errors.New("failed to initiate IPv4 support")
+		}
+		if ip6 && l.conn6 == nil {
+			return "", errors.New("failed to initiate IPv6 support")
+		}
 	}
 
-	return nil
+	return networkMode, nil
 }
 
 func (l *icmpLoop) runICMPRecv(conn *icmp.PacketConn, proto int) {
@@ -320,8 +352,8 @@ func (l *icmpLoop) sendEchoRequest(addr *net.IPAddr) (*requestContext, error) {
 	return ctx, nil
 }
 
-func createListener(name, network string) *icmp.PacketConn {
-	conn, err := icmp.ListenPacket(network, "")
+func createListener(name, network, addr string) *icmp.PacketConn {
+	conn, err := icmp.ListenPacket(network, addr)
 
 	// XXX: need to check for conn == nil, as 'err != nil' seems always to be
 	//      true, even if error value itself is `nil`. Checking for conn suppresses

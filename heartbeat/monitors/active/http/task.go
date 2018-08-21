@@ -27,6 +27,7 @@ func newHTTPMonitorHostJob(
 	enc contentEncoder,
 	body []byte,
 	validator RespCheck,
+	localHost string,
 ) (monitors.Job, error) {
 	typ := config.Name
 	jobName := fmt.Sprintf("%v@%v", typ, addr)
@@ -48,10 +49,11 @@ func newHTTPMonitorHostJob(
 
 	timeout := config.Timeout
 	fields := common.MapStr{
-		"scheme": request.URL.Scheme,
-		"host":   hostname,
-		"port":   port,
-		"url":    request.URL.String(),
+		"scheme":    request.URL.Scheme,
+		"host":      hostname,
+		"port":      port,
+		"url":       request.URL.String(),
+		"interface": localHost,
 	}
 
 	return monitors.MakeSimpleJob(jobName, typ, func() (common.MapStr, error) {
@@ -71,6 +73,7 @@ func newHTTPMonitorIPsJob(
 	enc contentEncoder,
 	body []byte,
 	validator RespCheck,
+	localAddr monitors.BindLocalAddr,
 ) (monitors.Job, error) {
 	typ := config.Name
 	jobName := fmt.Sprintf("%v@%v", typ, addr)
@@ -85,11 +88,11 @@ func newHTTPMonitorIPsJob(
 		return nil, err
 	}
 
-	pingFactory := createPingFactory(config, hostname, port, tls, req, body, validator)
+	pingFactory := createPingFactory(config, hostname, port, tls, req, body, validator, localAddr)
 	if ip := net.ParseIP(hostname); ip != nil {
-		return monitors.MakeByIPJob(jobName, typ, ip, pingFactory)
+		return monitors.MakeByIPJob(localAddr.Host, jobName, typ, ip, pingFactory)
 	}
-	return monitors.MakeByHostJob(jobName, typ, hostname, config.Mode, pingFactory)
+	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, hostname, config.Mode, pingFactory, config.Dns)
 }
 
 func createPingFactory(
@@ -100,6 +103,7 @@ func createPingFactory(
 	request *http.Request,
 	body []byte,
 	validator RespCheck,
+	localAddr monitors.BindLocalAddr,
 ) func(*net.IPAddr) monitors.TaskRunner {
 	fields := common.MapStr{
 		"scheme": request.URL.Scheme,
@@ -111,10 +115,29 @@ func createPingFactory(
 	isTLS := request.URL.Scheme == "https"
 	checkRedirect := makeCheckRedirect(config.MaxRedirects)
 
+	var localIPs []net.TCPAddr
+
+	for _, localIP := range localAddr.IPs {
+		localIPs = append(localIPs, net.TCPAddr{
+			IP:   localIP.IP,
+			Port: localIP.Port,
+			Zone: localIP.Zone,
+		})
+	}
+
 	return monitors.MakePingIPFactory(fields, func(ip *net.IPAddr) (common.MapStr, error) {
 		addr := net.JoinHostPort(ip.String(), strconv.Itoa(int(port)))
-		d := &dialchain.DialerChain{
-			Net: dialchain.ConstAddrDialer("tcp_connect_rtt", addr, timeout),
+
+		var d *dialchain.DialerChain
+
+		if len(localIPs) <= 0 {
+			d = &dialchain.DialerChain{
+				Net: dialchain.ConstAddrDialer("tcp_connect_rtt", addr, timeout),
+			}
+		} else {
+			d = &dialchain.DialerChain{
+				Net: dialchain.ConstAddrBindDialer("tcp_connect_rtt", addr, timeout, localIPs),
+			}
 		}
 		if isTLS {
 			d.AddLayer(dialchain.TLSLayer("tls_handshake_rtt", tls, timeout))
