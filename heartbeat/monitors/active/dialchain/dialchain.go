@@ -201,8 +201,11 @@ func ConstAddrLayer(addr string, l Layer) Layer {
 func TCPDialer(name string, to time.Duration) NetDialer {
 	return NetDialer{name, transport.NetDialer(to)}
 }
-func TCPBindDialer(name string, to time.Duration, localAddr []net.TCPAddr) NetDialer {
-	return NetDialer{name, transport.NetBindDialer(to, localAddr)}
+func TCPBindDialer(name string,
+	to time.Duration,
+	localAddr []net.TCPAddr,
+	dns transport.Dns) NetDialer {
+	return NetDialer{name, transport.NetBindDialer(to, localAddr, dns)}
 }
 
 func UDPDialer(name string, to time.Duration) NetDialer {

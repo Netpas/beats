@@ -102,7 +102,7 @@ func create(
 			}
 
 			name := fmt.Sprintf("%v-host-%v@%v", config.Name, network, host)
-			err := addJob(monitors.MakeByHostJob(localAddr.Host, name, typ, host, config.Mode, pingFactory))
+			err := addJob(monitors.MakeByHostJob(localAddr.Host, name, typ, host, config.Mode, pingFactory, config.Dns))
 			if err != nil {
 				return nil, err
 			}

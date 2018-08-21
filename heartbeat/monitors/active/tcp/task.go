@@ -91,7 +91,7 @@ func newTCPMonitorIPsJob(
 	}
 
 	debugf("Make TCP by Host job: %v:%v (mode=%#v)", addr.Host, addr.Ports, config.Mode)
-	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, addr.Host, config.Mode, pingFactory)
+	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, addr.Host, config.Mode, pingFactory, config.Dns)
 }
 
 func createPingFactory(
@@ -198,7 +198,8 @@ func buildDialerChain(
 	if len(localAddr) <= 0 {
 		netDialer = dialchain.TCPDialer("tcp_connect_rtt", config.Timeout)
 	} else {
-		netDialer = dialchain.TCPBindDialer("tcp_connect_rtt", config.Timeout, localAddr)
+		netDialer = dialchain.TCPBindDialer("tcp_connect_rtt", config.Timeout,
+			localAddr, config.Dns)
 	}
 
 	d := &dialchain.DialerChain{

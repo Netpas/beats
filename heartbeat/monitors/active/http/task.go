@@ -92,7 +92,7 @@ func newHTTPMonitorIPsJob(
 	if ip := net.ParseIP(hostname); ip != nil {
 		return monitors.MakeByIPJob(localAddr.Host, jobName, typ, ip, pingFactory)
 	}
-	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, hostname, config.Mode, pingFactory)
+	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, hostname, config.Mode, pingFactory, config.Dns)
 }
 
 func createPingFactory(

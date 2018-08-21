@@ -131,7 +131,7 @@ func newRoundTripper(config *Config,
 	if len(localAddr.IPs) <= 0 {
 		dialer = transport.NetDialer(config.Timeout)
 	} else {
-		dialer = transport.NetBindDialer(config.Timeout, localIPs)
+		dialer = transport.NetBindDialer(config.Timeout, localIPs, config.Dns)
 	}
 	tlsDialer, err := transport.TLSDialer(dialer, tls, config.Timeout)
 	if err != nil {

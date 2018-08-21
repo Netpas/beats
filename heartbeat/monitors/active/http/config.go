@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/elastic/beats/libbeat/outputs"
+	"github.com/elastic/beats/libbeat/outputs/transport"
 
 	"github.com/elastic/beats/heartbeat/monitors"
 )
@@ -30,6 +31,9 @@ type Config struct {
 
 	// http(s) ping validation
 	Check checkConfig `config:"check"`
+
+	// dns
+	Dns transport.Dns `config:"dns"`
 }
 
 type checkConfig struct {
@@ -78,6 +82,7 @@ var defaultConfig = Config{
 			RecvBody:    "",
 		},
 	},
+	Dns: transport.DefaultDnsSet,
 }
 
 func (r *requestParameters) Validate() error {
