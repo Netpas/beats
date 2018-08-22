@@ -50,6 +50,12 @@ heartbeat.monitors:
   # default: 3
   # units: s
   dns.timeout: 3
+  # Dns three ways
+  # "ipv4": only parse ipv4 address
+  # "ipv6": only parse ipv6 address
+  # "all": parse ipv4 and ipv6 address
+  # default: "ipv4"
+  dns.mode: "ipv4"
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.
@@ -129,6 +135,12 @@ heartbeat.monitors:
   # default: 3
   # units: s
   dns.timeout: 3
+  # Dns three ways
+  # "ipv4": only parse ipv4 address
+  # "ipv6": only parse ipv6 address
+  # "all": parse ipv4 and ipv6 address
+  # default: "ipv4"
+  dns.mode: "ipv4"
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.
@@ -214,6 +226,12 @@ heartbeat.monitors:
   # default: 3
   # units: s
   dns.timeout: 3
+  # Dns three ways
+  # "ipv4": only parse ipv4 address
+  # "ipv6": only parse ipv6 address
+  # "all": parse ipv4 and ipv6 address
+  # default: "ipv4"
+  dns.mode: "ipv4"
 
   # Configure IP protocol types to ping on if hostnames are configured.
   # Ping all resolvable IPs if `mode` is `all`, or only one IP if `mode` is `any`.

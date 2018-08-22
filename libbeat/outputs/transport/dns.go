@@ -17,9 +17,16 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+const (
+	DnsModeIPV4 = "ipv4"
+	DnsModeIPV6 = "ipv6"
+	DnsModeAll  = "all"
+)
+
 type Dns struct {
 	Addrs   []string `config:"addrs"`
 	Timeout int      `config:"timeout"`
+	Mode    string   `config:"mode"`
 }
 
 const (
@@ -33,6 +40,7 @@ const (
 
 var DefaultDnsSet = Dns{
 	Timeout: -1,
+	Mode:    DnsModeIPV4,
 }
 
 func ParseDns(domain string, dns Dns, dnsType uint16) ([]net.IP, error) {
@@ -106,21 +114,36 @@ func DnsLookup(domain string, dns Dns) ([]net.IP, error) {
 	var IPV6Err error
 	var wg sync.WaitGroup
 
-	wg.Add(2)
-	go func() {
-		dnsIPV4, IPV4Err = ParseDns(domain, dns, TypeA)
-		wg.Done()
-	}()
+	if dns.Mode != DnsModeIPV4 && dns.Mode != DnsModeIPV6 && dns.Mode != DnsModeAll {
+		dns.Mode = DnsModeIPV4
+	}
 
-	go func() {
-		dnsIPV6, IPV6Err = ParseDns(domain, dns, TypeAAAA)
-		wg.Done()
-	}()
+	if dns.Mode == DnsModeIPV4 || dns.Mode == DnsModeAll {
+		wg.Add(1)
+		go func() {
+			dnsIPV4, IPV4Err = ParseDns(domain, dns, TypeA)
+			wg.Done()
+		}()
+	}
+
+	if dns.Mode == DnsModeIPV6 || dns.Mode == DnsModeAll {
+		wg.Add(1)
+		go func() {
+			dnsIPV6, IPV6Err = ParseDns(domain, dns, TypeAAAA)
+			wg.Done()
+		}()
+	}
 
 	wg.Wait()
 
 	if IPV4Err != nil && IPV6Err != nil {
-		return nil, IPV4Err
+		if dns.Mode == DnsModeAll {
+			return nil, IPV4Err
+		} else if dns.Mode == DnsModeIPV4 {
+			return nil, IPV4Err
+		} else {
+			return nil, IPV6Err
+		}
 	}
 
 	if IPV4Err == nil {
