@@ -41,8 +41,24 @@ func create(
 		return nil
 	}
 
+	bindLocalAddr, count, err := monitors.CollectLocalAddr(config.Interface, "icmp")
+	if err != nil {
+		return nil, err
+	} else {
+		if count != 0 {
+			debugf("icmp bind interface parse: {")
+			for _, localAddr := range bindLocalAddr {
+				for _, localIP := range localAddr.IPs {
+					debugf("IP: %s, Port: %d", localIP.IP.String(), localIP.Port)
+				}
+			}
+			debugf("Number of destination addresses: %d", count)
+			debugf("}")
+		}
+	}
+
 	ipVersion := config.Mode.Network()
-	if len(config.Hosts) > 0 && ipVersion == "" {
+	if count > 0 && ipVersion == "" {
 		err := fmt.Errorf("pinging hosts requires ipv4 or ipv6 mode enabled")
 		return nil, err
 	}
@@ -50,43 +66,53 @@ func create(
 	var loopErr error
 	loopInit.Do(func() {
 		debugf("initialize icmp handler")
-		loop, loopErr = newICMPLoop()
+		loops, loopErr = newICMPLoop(bindLocalAddr)
 	})
 	if loopErr != nil {
 		debugf("Failed to initialize ICMP loop %v", loopErr)
 		return nil, loopErr
 	}
 
-	if err := loop.checkNetworkMode(ipVersion); err != nil {
-		return nil, err
-	}
+	for _, localAddr := range bindLocalAddr {
+		loop := loops[localAddr.Key]
+		if loop == nil {
+			continue
+		}
+		newHosts := config.Interface[localAddr.Key]
+		if newHosts == nil {
+			continue
+		}
+		network, err := loop.checkNetworkMode(ipVersion)
+		if err != nil {
+			return nil, err
+		}
 
-	typ := config.Name
-	network := config.Mode.Network()
-	pingFactory := monitors.MakePingIPFactory(nil, createPingIPFactory(&config))
+		typ := config.Name
+		pingFactory := monitors.MakePingIPFactory(nil, createPingIPFactory(&config, loop))
 
-	for _, host := range config.Hosts {
-		ip := net.ParseIP(host)
-		if ip != nil {
-			name := fmt.Sprintf("icmp-ip@%v", ip.String())
-			err := addJob(monitors.MakeByIPJob(name, typ, ip, pingFactory))
+		for _, host := range newHosts {
+			ip := net.ParseIP(host)
+			if ip != nil {
+				name := fmt.Sprintf("icmp-ip@%v", ip.String())
+				err := addJob(monitors.MakeByIPJob(localAddr.Host, name, typ, ip, pingFactory))
+				if err != nil {
+					return nil, err
+				}
+				continue
+			}
+
+			name := fmt.Sprintf("%v-host-%v@%v", config.Name, network, host)
+			err := addJob(monitors.MakeByHostJob(localAddr.Host, name, typ, host, config.Mode, pingFactory, config.Dns))
 			if err != nil {
 				return nil, err
 			}
-			continue
-		}
-
-		name := fmt.Sprintf("%v-host-%v@%v", config.Name, network, host)
-		err := addJob(monitors.MakeByHostJob(name, typ, host, config.Mode, pingFactory))
-		if err != nil {
-			return nil, err
 		}
 	}
 
 	return jobs, nil
 }
 
-func createPingIPFactory(config *Config) func(*net.IPAddr) (common.MapStr, error) {
+func createPingIPFactory(config *Config, loop *icmpLoop) func(*net.IPAddr) (common.MapStr, error) {
 	return func(ip *net.IPAddr) (common.MapStr, error) {
 		rtt, _, err := loop.ping(ip, config.Timeout, config.Wait)
 		if err != nil {

@@ -14,8 +14,8 @@ type Config struct {
 	Name string `config:"name"`
 
 	// check all ports if host does not contain port
-	Hosts []string `config:"hosts" validate:"required"`
-	Ports []uint16 `config:"ports"`
+	Ports     []uint16            `config:"ports"`
+	Interface map[string][]string `config:"interface" validate:"required"`
 
 	Mode monitors.IPSettings `config:",inline"`
 
@@ -29,12 +29,16 @@ type Config struct {
 	// validate connection
 	SendString    string `config:"check.send"`
 	ReceiveString string `config:"check.receive"`
+
+	// dns
+	Dns transport.Dns `config:"dns"`
 }
 
 var DefaultConfig = Config{
 	Name:    "tcp",
 	Timeout: 16 * time.Second,
 	Mode:    monitors.DefaultIPSettings,
+	Dns:     transport.DefaultDnsSet,
 }
 
 func (c *Config) Validate() error {

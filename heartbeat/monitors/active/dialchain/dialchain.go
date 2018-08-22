@@ -150,6 +150,41 @@ func ConstAddrDialer(name, addr string, to time.Duration) NetDialer {
 	})}
 }
 
+func ConstAddrBindDialer(name, addr string, to time.Duration, localAddrs []net.TCPAddr) NetDialer {
+	return NetDialer{name, transport.DialerFunc(func(network, _ string) (net.Conn, error) {
+		switch network {
+		case "tcp", "tcp4", "tcp6", "udp", "udp4", "udp6":
+		default:
+			return nil, fmt.Errorf("unsupported network type %v", network)
+		}
+		var dialer *net.Dialer
+		if len(localAddrs) > 1 {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			if net.ParseIP(host).To4() != nil {
+				for _, localAddr := range localAddrs {
+					if localAddr.IP.To4() != nil {
+						dialer = &net.Dialer{Timeout: to, LocalAddr: &localAddr}
+						break
+					}
+				}
+			} else {
+				for _, localAddr := range localAddrs {
+					if localAddr.IP.To4() == nil {
+						dialer = &net.Dialer{Timeout: to, LocalAddr: &localAddr}
+						break
+					}
+				}
+			}
+		} else {
+			dialer = &net.Dialer{Timeout: to, LocalAddr: &localAddrs[0]}
+		}
+		return dialer.Dial(network, addr)
+	})}
+}
+
 func ConstAddrLayer(addr string, l Layer) Layer {
 	return Layer{l.Name, func(d transport.Dialer) (transport.Dialer, error) {
 		forward, err := l.Builder(d)
@@ -165,6 +200,12 @@ func ConstAddrLayer(addr string, l Layer) Layer {
 
 func TCPDialer(name string, to time.Duration) NetDialer {
 	return NetDialer{name, transport.NetDialer(to)}
+}
+func TCPBindDialer(name string,
+	to time.Duration,
+	localAddr []net.TCPAddr,
+	dns transport.Dns) NetDialer {
+	return NetDialer{name, transport.NetBindDialer(to, localAddr, dns)}
 }
 
 func UDPDialer(name string, to time.Duration) NetDialer {

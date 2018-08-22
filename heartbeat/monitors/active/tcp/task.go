@@ -17,6 +17,7 @@ import (
 
 func newTCPMonitorHostJob(
 	scheme, host string, port uint16,
+	localAddr monitors.BindLocalAddr,
 	tls *transport.TLSConfig,
 	config *Config,
 ) (monitors.Job, error) {
@@ -25,17 +26,26 @@ func newTCPMonitorHostJob(
 	jobName := jobName(typ, jobType(scheme), host, []uint16{port})
 	validator := makeValidateConn(config)
 	pingAddr := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	var localIPs []net.TCPAddr
 
-	taskDialer, err := buildDialerChain(scheme, tls, config)
+	for _, localIP := range localAddr.IPs {
+		localIPs = append(localIPs, net.TCPAddr{
+			IP:   localIP.IP,
+			Port: localIP.Port,
+			Zone: localIP.Zone,
+		})
+	}
+	taskDialer, err := buildDialerChain(scheme, tls, config, localIPs)
 	if err != nil {
 		return nil, err
 	}
 
 	return monitors.MakeSimpleJob(jobName, typ, func() (common.MapStr, error) {
 		event := common.MapStr{
-			"scheme": scheme,
-			"port":   port,
-			"host":   host,
+			"scheme":    scheme,
+			"port":      port,
+			"host":      host,
+			"interface": localAddr.Host,
 		}
 		dialer, err := taskDialer.BuildWithMeasures(event)
 		if err != nil {
@@ -50,6 +60,7 @@ func newTCPMonitorHostJob(
 
 func newTCPMonitorIPsJob(
 	addr connURL,
+	localAddr monitors.BindLocalAddr,
 	tls *transport.TLSConfig,
 	config *Config,
 ) (monitors.Job, error) {
@@ -58,8 +69,17 @@ func newTCPMonitorIPsJob(
 	jobType := jobType(addr.Scheme)
 	jobName := jobName(typ, jobType, addr.Host, addr.Ports)
 	validator := makeValidateConn(config)
+	var localIPs []net.TCPAddr
 
-	dialerFactory, err := buildHostDialerChainFactory(addr.Scheme, tls, config)
+	for _, localIP := range localAddr.IPs {
+		localIPs = append(localIPs, net.TCPAddr{
+			IP:   localIP.IP,
+			Port: localIP.Port,
+			Zone: localIP.Zone,
+		})
+	}
+
+	dialerFactory, err := buildHostDialerChainFactory(addr.Scheme, tls, config, localIPs)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +87,11 @@ func newTCPMonitorIPsJob(
 	pingFactory := createPingFactory(dialerFactory, addr, timeout, validator)
 	if ip := net.ParseIP(addr.Host); ip != nil {
 		debugf("Make TCP by IP job: %v:%v", ip, addr.Ports)
-		return monitors.MakeByIPJob(jobName, typ, ip, pingFactory)
+		return monitors.MakeByIPJob(localAddr.Host, jobName, typ, ip, pingFactory)
 	}
 
 	debugf("Make TCP by Host job: %v:%v (mode=%#v)", addr.Host, addr.Ports, config.Mode)
-	return monitors.MakeByHostJob(jobName, typ, addr.Host, config.Mode, pingFactory)
+	return monitors.MakeByHostJob(localAddr.Host, jobName, typ, addr.Host, config.Mode, pingFactory, config.Dns)
 }
 
 func createPingFactory(
@@ -92,9 +112,12 @@ func createPingFactory(
 			if err != nil {
 				return event, err
 			}
-
 			results, err := pingHost(dialer, pingAddr, timeout, validator)
+			if err != nil {
+				return event, err
+			}
 			event.Update(results)
+
 			return event, err
 		})
 }
@@ -113,6 +136,7 @@ func pingHost(
 		debugf("dial failed with: %v", err)
 		return nil, reason.IOFailed(err)
 	}
+
 	defer conn.Close()
 	if validator == nil {
 		// no additional validation step => ping success
@@ -167,9 +191,19 @@ func buildDialerChain(
 	scheme string,
 	tls *transport.TLSConfig,
 	config *Config,
+	localAddr []net.TCPAddr,
 ) (*dialchain.DialerChain, error) {
+	var netDialer dialchain.NetDialer
+
+	if len(localAddr) <= 0 {
+		netDialer = dialchain.TCPDialer("tcp_connect_rtt", config.Timeout)
+	} else {
+		netDialer = dialchain.TCPBindDialer("tcp_connect_rtt", config.Timeout,
+			localAddr, config.Dns)
+	}
+
 	d := &dialchain.DialerChain{
-		Net: dialchain.TCPDialer("tcp_connect_rtt", config.Timeout),
+		Net: netDialer,
 	}
 	if config.Socks5.URL != "" {
 		d.AddLayer(dialchain.SOCKS5Layer("socks5_connect_rtt", &config.Socks5))
@@ -188,8 +222,9 @@ func buildHostDialerChainFactory(
 	scheme string,
 	tls *transport.TLSConfig,
 	config *Config,
+	localAddr []net.TCPAddr,
 ) (func(string) *dialchain.DialerChain, error) {
-	template, err := buildDialerChain(scheme, tls, config)
+	template, err := buildDialerChain(scheme, tls, config, localAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -202,9 +237,16 @@ func buildHostDialerChainFactory(
 			return d
 		}
 
-		return &dialchain.DialerChain{
-			Net:    dialchain.ConstAddrDialer("tcp_connect_rtt", addr, config.Timeout),
-			Layers: template.Layers,
+		if len(localAddr) <= 0 {
+			return &dialchain.DialerChain{
+				Net:    dialchain.ConstAddrDialer("tcp_connect_rtt", addr, config.Timeout),
+				Layers: template.Layers,
+			}
+		} else {
+			return &dialchain.DialerChain{
+				Net:    dialchain.ConstAddrBindDialer("tcp_connect_rtt", addr, config.Timeout, localAddr),
+				Layers: template.Layers,
+			}
 		}
 	}, nil
 }

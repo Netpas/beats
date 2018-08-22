@@ -178,6 +178,14 @@ Service url used by monitor.
 
 
 [float]
+=== interface
+
+type: text
+
+Locally bind address.
+
+
+[float]
 === ip
 
 type: keyword
